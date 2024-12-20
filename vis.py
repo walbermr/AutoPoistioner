@@ -234,7 +234,7 @@ class EllipseDrawer:
         """Atualiza o feed de vídeo com a elipse desenhada."""
         while self.running:
             startTime = time.time()
-            ret, frame = self.cap.read()
+            # ret, frame = self.cap.read()
 
             frame = cv2.imread("./images/2019-06-25_02365_nocover.jpg")
             frame = cv2.resize(frame, (self.resolution.x, self.resolution.y))
@@ -242,8 +242,8 @@ class EllipseDrawer:
                 self.frameController.yTop:self.frameController.yDown,
                 self.frameController.xLeft:self.frameController.xRight
             ]
-            if not ret:
-                continue
+            # if not ret:
+            #     continue
             
             # Parâmetros da elipse
             # center = (self.petriEllipse.centerX.get(), self.petriEllipse.centerY.get())
