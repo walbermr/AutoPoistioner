@@ -8,4 +8,7 @@
 
 ## Run
 
-``` python vis.py ```
+``` 
+$ conda activate bio-gen
+$ python vis.py 
+```
