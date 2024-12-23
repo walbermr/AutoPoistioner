@@ -1,3 +1,4 @@
 microbial-dataset-generation/
 outputs/
+*.onnx
 __pycache__
