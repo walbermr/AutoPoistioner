@@ -7,7 +7,11 @@ from argparse import Namespace
 
 from utils.ui import Controls
 
-from traditional.watershed import WaterShed
+from detection.traditional.watershed import WaterShed
+
+from detection.deep.yolov6 import ONNXModel
+
+from utils.frame.drawings import drawRectangles
 
 import threading
 
@@ -185,7 +189,8 @@ class EllipseDrawer:
     def __init__(self, root):
         self.root = root
         self.root.title("Desenhando Elipse no Feed de Vídeo")
-        self.resolution = Namespace(x=640, y=480)
+        self.resolution = Namespace(x=512, y=512)
+        self.detector = ONNXModel()
         
         # Variáveis para os parâmetros da elipse
         # self.petriEllipse = EllipseController(self.resolution, root=self.root)
@@ -258,7 +263,11 @@ class EllipseDrawer:
             # Desenha a elipse no quadro
             # cv2.ellipse(frame, center, axes, angle, 0, 360, (0, 255, 0), thickness)
 
-            frame, _ = self.waterShed.process(frame)
+            # frame, _ = self.waterShed.process(frame)
+            
+            nms_thr = 0.1
+            output = self.detector.inference(frame, nms_thr)
+            rectangles = drawRectangles(output, (self.resolution.x, self.resolution.y), nms_thr, frame)
             
             # Exibe o vídeo em uma janela do OpenCV
             cv2.imshow("Detection", frame)
