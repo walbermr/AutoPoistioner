@@ -26,6 +26,15 @@ class Point():
 
         return Point(new_x, new_y)
     
+    def __mul__(self, val):
+        if isinstance(val, float) or isinstance(val, int):
+            new_x = self.x * val
+            new_y = self.y * val
+        else:
+            raise ValueError("err")
+        
+        return Point(new_x, new_y)
+    
     def abs(self) -> float:
         return math.sqrt(self.x**2 + self.y**2)
     
