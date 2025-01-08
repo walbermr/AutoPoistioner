@@ -24,4 +24,4 @@ def drawRectangles(outputs, frame_resolution, score_thr, frame):
 
                 rects.append((x, y, x+w, y+h))
 
-    return rects
+    return rects, boxes

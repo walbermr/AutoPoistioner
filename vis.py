@@ -5,6 +5,8 @@ import tkinter as tk
 from collections import OrderedDict
 from argparse import Namespace
 
+from typing import List, Tuple
+
 from utils.ui import Controls
 
 from detection.traditional.watershed import WaterShed
@@ -12,6 +14,7 @@ from detection.traditional.watershed import WaterShed
 from detection.deep.yolov6 import ONNXModel
 
 from utils.frame.drawings import drawRectangles
+from utils.frame.geometry import Circle, Rectangle, Point
 
 import threading
 
@@ -98,21 +101,139 @@ class EllipseController(Controls):
         ).pack()
 
 
-class PetriDish(Controls):
+class PetriDish():
+    def __init__(self, diameter: float):
+        self._segmentation = None
+
+        self._pixelCentroid: Point = Point(0, 0)
+        self._pixelRadius: float = 0
+        self._pixelArea: float = 0
+
+        self._diameter: float = diameter
+        self._conversionFactor: float = 0
+
+    def getCentroid(self) -> Point:
+        return self._pixelCentroid
+
+    def drawCentroid(self, frame):
+        frame = cv2.line(
+            frame, 
+            (self._pixelCentroid.x, self._pixelCentroid.y), 
+            (self._pixelCentroid.x, self._pixelCentroid.y), 
+            (255,0,0), 
+            10,
+        )
+        return frame
+    
+    def getConversionFactor(self) -> float:
+        return self._conversionFactor
+    
+    def setDishDiameter(self, diameter: float) -> None:
+        self._diameter = diameter
+
+    def _updateConversionFactor(self) -> None:
+        if self._diameter == 0:
+            return
+        
+        realArea = np.pi * (self._diameter / 2.0) ** 2
+        self._conversionFactor = realArea / self._pixelArea
+
+    def findParameters(self) -> None:
+        imageMoments = cv2.moments(self._segmentation)
+
+        # Compute centroid
+        cx = int(imageMoments["m10"]/imageMoments["m00"])
+        cy = int(imageMoments["m01"]/imageMoments["m00"])
+
+        self._pixelCentroid = Point(cx, cy)
+
+        # Calculate radius
+        self._pixelArea = self._segmentation.sum()
+        self._pixelRadius = np.sqrt(self._pixelArea / np.pi)
+
+        self._updateConversionFactor()
+    
+    def segmentDish(self, image) -> np.ndarray:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+
+        # Morph open using elliptical shaped kernel
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3))
+        opening = 255 - cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=3)
+
+        dishSegmentationMask = opening[..., np.newaxis].repeat(3, axis=2)
+        dishSegmentationMask[..., 0:2] = 0
+
+        self._segmentation = (opening != 0).astype(float)
+
+        return dishSegmentationMask
+
+
+class Colony():
+    def __init__(self, detection: Rectangle, dishPixelCenter: Point, conversionFactor: float):
+        self._conversionFactor: float = conversionFactor
+        self._detection: Rectangle = detection
+        self._coordinateZero: Point = dishPixelCenter
+        
+        self._limits = Circle(
+            self._detection.cx, 
+            self._detection.cy, 
+            (self._detection.h + self._detection.w) / 2,
+        )
+
+    def getPixelOffset(self) -> Point:
+        return self._limits.center
+
+    def getOffset(self) -> Point:
+        return (self._limits.center - self._coordinateZero) * np.sqrt(self._conversionFactor)
+
+    def getConversionFactor(self) -> float:
+        return self._conversionFactor
+    
+    def setConversionFactor(self, factor: float) -> None:
+        self._conversionFactor = factor
+
+    def getPixelArea(self) -> float:
+        '''
+            Returns the area in pixels.
+        '''
+        return self._limits.area
+    
+    def getArea(self) -> float:
+        '''
+            Returns the real area after convertion.
+        '''
+        return self._limits.area * self._conversionFactor
+
+
+class PetriDishController(Controls):
     def __init__(self, root=None):
-        self.diameter = tk.IntVar(value=10)
+        self._diameter = tk.IntVar(value=100)
+        self._valueList = [50 + 10*i for i in range(11)]
 
         super().__init__(root)
 
+    def _scaleValuecheck(self, value):
+        newvalue = min(self._valueList, key=lambda x:abs(x-float(value)))
+        self.slider.set(newvalue)
+
     def placeControls(self):
         tk.Label(self.controls_frame, text="Diâmetro da placa (mm):").pack()
-        tk.Scale(
-            self.controls_frame, 
-            from_=5, 
-            to=15, orient="horizontal", 
-            variable=self.diameter,
+        self.slider = tk.Scale(
+            self.controls_frame,
+            from_=min(self._valueList),
+            to=max(self._valueList),
+            orient="horizontal",
+            variable=self._diameter,
+            command=self._scaleValuecheck,
             length=200
-        ).pack()
+        )
+
+        self.slider.pack()
+
+    @property
+    def diameter(self):
+        return self._diameter.get()
 
 
 class FrameController(Controls):
@@ -181,35 +302,58 @@ class FrameController(Controls):
     @property
     def yDown(self):
         return self.cropYDown.get()
-    
 
-class EllipseDrawer:
+
+class YoloController(Controls):
+    def __init__(self, root):
+        self.threshold = tk.DoubleVar(value=0.1)
+
+        super().__init__(root)
+
+    def placeControls(self):
+        tk.Label(self.controls_frame, text="Limiar de detecção:").pack()
+        tk.Scale(
+            self.controls_frame,
+            from_=0.0,
+            to=1.0,
+            orient="horizontal",
+            variable=self.threshold,
+            resolution=0.01,
+            length=200
+        ).pack()
+
+
+class MainWindow:
     closeEvent = threading.Event()
 
     def __init__(self, root):
         self.root = root
         self.root.title("Desenhando Elipse no Feed de Vídeo")
-        self.resolution = Namespace(x=512, y=512)
-        self.detector = ONNXModel()
+        self.resolution: Namespace = Namespace(x=640, y=640)
+        self.detector: ONNXModel = ONNXModel(model_path="./models/bacteria-filtered-smallbox.onnx", custom_export=True)
         
         # Variáveis para os parâmetros da elipse
         # self.petriEllipse = EllipseController(self.resolution, root=self.root)
-        self.petriController = PetriDish(root=self.root)
-        self.frameController = FrameController(self.resolution.y, self.resolution.x, root=self.root)
-        self.waterShed = WaterShed(self.root)
+        self.petriController: PetriDishController = PetriDishController(root=self.root)
+        self.petri: PetriDish = PetriDish(self.petriController.diameter)
+        self.frameController: FrameController = FrameController(self.resolution.y, self.resolution.x, root=self.root)
+        self.waterShed: WaterShed = WaterShed(self.root)
+        self.yoloController: YoloController = YoloController(self.root)
+        self.colonies: List[Colony] = []
 
         # Interface gráfica
         # self.petriEllipse.placeControls()
         self.frameController.placeControls()
         self.petriController.placeControls()
         self.waterShed.placeControls()
+        self.yoloController.placeControls()
         
         # Feed de vídeo da webcam
         self.cap = cv2.VideoCapture(0)  # Webcam padrão
         self.running = True
         
         # Iniciar a thread para atualizar o feed de vídeo
-        self.video_thread = threading.Thread(target=self.updateVideoFeed)
+        self.video_thread: threading.Thread = threading.Thread(target=self.updateVideoFeed)
         self.video_thread.start()
         
         # Fechar janela com segurança
@@ -241,7 +385,10 @@ class EllipseDrawer:
             startTime = time.time()
             # ret, frame = self.cap.read()
 
-            frame = cv2.imread("./images/2019-06-25_02365_nocover.jpg")
+            # frame = cv2.imread("./images/316_jpg.rf.4c49cf826e0c9700da5e7f4019a844d6.jpg")
+            # frame = cv2.imread("./images/17111_jpg.rf.512a1a293c6b3a381bbcd6abc1e1b4fc.jpg")
+            frame = cv2.imread("./microbial-dataset-generation/data/style_dishes/6/2019-06-25_02365_nocover.jpg")
+            
             frame = cv2.resize(frame, (self.resolution.x, self.resolution.y))
             frame = frame[
                 self.frameController.yTop:self.frameController.yDown,
@@ -265,11 +412,23 @@ class EllipseDrawer:
 
             # frame, _ = self.waterShed.process(frame)
             
-            nms_thr = 0.1
+            nms_thr = self.yoloController.threshold.get()
             output = self.detector.inference(frame, nms_thr)
-            rectangles = drawRectangles(output, (self.resolution.x, self.resolution.y), nms_thr, frame)
+            
+            self.petri.setDishDiameter(self.petriController.diameter)
+            frame = self.petri.segmentDish(frame)
+            self.petri.findParameters()
+            frame = self.petri.drawCentroid(frame)
+
+            _, bboxes = drawRectangles(output, (self.resolution.x, self.resolution.y), nms_thr, frame)
+            
+            self.colonies = [Colony(r, self.petri.getCentroid(), self.petri.getConversionFactor()) for r in bboxes]
+
+            for c in self.colonies:
+                print("Area(mm^2): ", c.getArea(), " - Pixel Area(px^2): ", c.getPixelArea(), " - Offset(mm): ", c.getOffset())
             
             # Exibe o vídeo em uma janela do OpenCV
+
             cv2.imshow("Detection", frame)
 
             ellapsedTime = time.time() - startTime
@@ -277,9 +436,9 @@ class EllipseDrawer:
                 time.sleep(1/30 - ellapsedTime)
             
             # Encerra se a tecla 'q' for pressionada
-            if EllipseDrawer.closeEvent.isSet() or cv2.waitKey(1) & 0xFF == ord('q'):
+            if MainWindow.closeEvent.isSet() or cv2.waitKey(1) & 0xFF == ord('q'):
                 self.running = False
-                EllipseDrawer.closeEvent.clear()
+                MainWindow.closeEvent.clear()
                 cv2.destroyAllWindows()
                 # self.on_close()
                 return
@@ -287,7 +446,7 @@ class EllipseDrawer:
     def on_close(self):
         """Encerra o programa com segurança."""
         self.running = False
-        EllipseDrawer.closeEvent.set()
+        MainWindow.closeEvent.set()
         self.cap.release()
 
         self.root.destroy()
@@ -295,5 +454,5 @@ class EllipseDrawer:
 # Iniciar o programa
 if __name__ == "__main__":
     root = tk.Tk()
-    app = EllipseDrawer(root)
+    app = MainWindow(root)
     root.mainloop()
