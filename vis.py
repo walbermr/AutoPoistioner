@@ -2,329 +2,30 @@ import cv2
 import time
 import numpy as np
 import tkinter as tk
+
 from collections import OrderedDict
 from argparse import Namespace
+from PIL import Image, ImageTk
 
-from typing import List, Tuple
-
-from utils.ui import Controls
+from typing import List
 
 from detection.traditional.watershed import WaterShed
 
 from detection.deep.yolov6 import ONNXModel
 
 from utils.frame.drawings import drawRectangles
-from utils.frame.geometry import Circle, Rectangle, Point
+from utils.entities import PetriDish, Colony
+from utils.controllers import PetriDishController, FrameController, YoloController
+from utils.frame.geometry import Rectangle, Point
 
 import threading
 
 DEBUG = True
 
 
-class EllipseController(Controls):
-    def __init__(self, resolution, root=None):
-        self.resolution = resolution
-        self.centerX = tk.IntVar(value=320)
-        self.centerY = tk.IntVar(value=240)
-        self.axisX = tk.IntVar(value=100)
-        self.axisY = tk.IntVar(value=50)
-        self.angle = tk.IntVar(value=0)
-        self.thickness = tk.IntVar(value=2)
-
-        super().__init__(root)
-
-    def placeControls(self):
-        """Cria os controles deslizantes e campos de entrada."""        
-        # Centro X
-        tk.Label(self.controls_frame, text="Centro X:").pack()
-        tk.Scale(
-            self.controls_frame, 
-            from_=0, 
-            to=self.resolution.x, 
-            orient="horizontal", 
-            variable=self.centerX,
-            length=200
-        ).pack()
-        
-        # Centro Y
-        tk.Label(self.controls_frame, text="Centro Y:").pack()
-        tk.Scale(
-            self.controls_frame, 
-            from_=0, 
-            to=self.resolution.y,
-            orient="horizontal", 
-            variable=self.centerY,
-            length=200
-        ).pack()
-        
-        # Raio X
-        tk.Label(self.controls_frame, text="Raio X:").pack()
-        tk.Scale(
-            self.controls_frame, 
-            from_=10, 
-            to=300, 
-            orient="horizontal", 
-            variable=self.axisX,
-            length=200
-        ).pack()
-        
-        # Raio Y
-        tk.Label(self.controls_frame, text="Raio Y:").pack()
-        tk.Scale(
-            self.controls_frame, 
-            from_=10, 
-            to=300, 
-            orient="horizontal", 
-            variable=self.axisY,
-            length=200
-        ).pack()
-        
-        # Ângulo
-        tk.Label(self.controls_frame, text="Ângulo:").pack()
-        tk.Scale(
-            self.controls_frame, 
-            from_=0, 
-            to=360, 
-            orient="horizontal", 
-            variable=self.angle,
-            length=200
-        ).pack()
-        
-        # Espessura
-        tk.Label(self.controls_frame, text="Espessura:").pack()
-        tk.Scale(
-            self.controls_frame, 
-            from_=1, 
-            to=10, orient="horizontal", 
-            variable=self.thickness,
-            length=200
-        ).pack()
-
-
-class PetriDish():
-    def __init__(self, diameter: float):
-        self._segmentation = None
-
-        self._pixelCentroid: Point = Point(0, 0)
-        self._pixelRadius: float = 0
-        self._pixelArea: float = 0
-
-        self._diameter: float = diameter
-        self._conversionFactor: float = 0
-
-    def getCentroid(self) -> Point:
-        return self._pixelCentroid
-
-    def drawCentroid(self, frame):
-        frame = cv2.line(
-            frame, 
-            (self._pixelCentroid.x, self._pixelCentroid.y), 
-            (self._pixelCentroid.x, self._pixelCentroid.y), 
-            (255,0,0), 
-            10,
-        )
-        return frame
-    
-    def getConversionFactor(self) -> float:
-        return self._conversionFactor
-    
-    def setDishDiameter(self, diameter: float) -> None:
-        self._diameter = diameter
-
-    def _updateConversionFactor(self) -> None:
-        if self._diameter == 0:
-            return
-        
-        realArea = np.pi * (self._diameter / 2.0) ** 2
-        self._conversionFactor = realArea / self._pixelArea
-
-    def findParameters(self) -> None:
-        imageMoments = cv2.moments(self._segmentation)
-
-        # Compute centroid
-        cx = int(imageMoments["m10"]/imageMoments["m00"])
-        cy = int(imageMoments["m01"]/imageMoments["m00"])
-
-        self._pixelCentroid = Point(cx, cy)
-
-        # Calculate radius
-        self._pixelArea = self._segmentation.sum()
-        self._pixelRadius = np.sqrt(self._pixelArea / np.pi)
-
-        self._updateConversionFactor()
-    
-    def segmentDish(self, image) -> np.ndarray:
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
-
-        # Morph open using elliptical shaped kernel
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3))
-        opening = 255 - cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=3)
-
-        dishSegmentationMask = opening[..., np.newaxis].repeat(3, axis=2)
-        dishSegmentationMask[..., 0:2] = 0
-
-        self._segmentation = (opening != 0).astype(float)
-
-        return dishSegmentationMask
-
-
-class Colony():
-    def __init__(self, detection: Rectangle, dishPixelCenter: Point, conversionFactor: float):
-        self._conversionFactor: float = conversionFactor
-        self._detection: Rectangle = detection
-        self._coordinateZero: Point = dishPixelCenter
-        
-        self._limits = Circle(
-            self._detection.cx, 
-            self._detection.cy, 
-            (self._detection.h + self._detection.w) / 2,
-        )
-
-    def getPixelOffset(self) -> Point:
-        return self._limits.center
-
-    def getOffset(self) -> Point:
-        return (self._limits.center - self._coordinateZero) * np.sqrt(self._conversionFactor)
-
-    def getConversionFactor(self) -> float:
-        return self._conversionFactor
-    
-    def setConversionFactor(self, factor: float) -> None:
-        self._conversionFactor = factor
-
-    def getPixelArea(self) -> float:
-        '''
-            Returns the area in pixels.
-        '''
-        return self._limits.area
-    
-    def getArea(self) -> float:
-        '''
-            Returns the real area after convertion.
-        '''
-        return self._limits.area * self._conversionFactor
-
-
-class PetriDishController(Controls):
-    def __init__(self, root=None):
-        self._diameter = tk.IntVar(value=100)
-        self._valueList = [50 + 10*i for i in range(11)]
-
-        super().__init__(root)
-
-    def _scaleValuecheck(self, value):
-        newvalue = min(self._valueList, key=lambda x:abs(x-float(value)))
-        self.slider.set(newvalue)
-
-    def placeControls(self):
-        tk.Label(self.controls_frame, text="Diâmetro da placa (mm):").pack()
-        self.slider = tk.Scale(
-            self.controls_frame,
-            from_=min(self._valueList),
-            to=max(self._valueList),
-            orient="horizontal",
-            variable=self._diameter,
-            command=self._scaleValuecheck,
-            length=200
-        )
-
-        self.slider.pack()
-
-    @property
-    def diameter(self):
-        return self._diameter.get()
-
-
-class FrameController(Controls):
-    def __init__(self, height, width, root=None):
-        self.cropXLeft = tk.IntVar(value=0)
-        self.cropXRight = tk.IntVar(value=width)
-        self.cropYTop = tk.IntVar(value=0)
-        self.cropYDown = tk.IntVar(value=height)
-        self.resolution = Namespace(x=width, y=height)
-
-        super().__init__(root)
-
-    def placeControls(self):
-        tk.Label(self.controls_frame, text="Crop x left:").pack()
-        tk.Scale(
-            self.controls_frame, 
-            from_=0, 
-            to=self.resolution.x,
-            orient="horizontal", 
-            variable=self.cropXLeft,
-            length=200
-        ).pack()
-
-        tk.Label(self.controls_frame, text="Crop x right:").pack()
-        tk.Scale(
-            self.controls_frame, 
-            from_=0, 
-            to=self.resolution.x,
-            orient="horizontal", 
-            variable=self.cropXRight,
-            length=200
-        ).pack()
-
-        tk.Label(self.controls_frame, text="Crop y top:").pack()
-        tk.Scale(
-            self.controls_frame, 
-            from_=0, 
-            to=self.resolution.y,
-            orient="horizontal", 
-            variable=self.cropYTop,
-            length=200
-        ).pack()
-
-        tk.Label(self.controls_frame, text="Crop y down:").pack()
-        tk.Scale(
-            self.controls_frame, 
-            from_=0, 
-            to=self.resolution.y,
-            orient="horizontal", 
-            variable=self.cropYDown,
-            length=200
-        ).pack()
-
-    @property
-    def xLeft(self):
-        return self.cropXLeft.get()
-    
-    @property
-    def xRight(self):
-        return self.cropXRight.get()
-    
-    @property
-    def yTop(self):
-        return self.cropYTop.get()
-    
-    @property
-    def yDown(self):
-        return self.cropYDown.get()
-
-
-class YoloController(Controls):
-    def __init__(self, root):
-        self.threshold = tk.DoubleVar(value=0.1)
-
-        super().__init__(root)
-
-    def placeControls(self):
-        tk.Label(self.controls_frame, text="Limiar de detecção:").pack()
-        tk.Scale(
-            self.controls_frame,
-            from_=0.0,
-            to=1.0,
-            orient="horizontal",
-            variable=self.threshold,
-            resolution=0.01,
-            length=200
-        ).pack()
-
-
 class MainWindow:
     closeEvent = threading.Event()
+    rectangleRemovingLock = threading.Lock()
 
     def __init__(self, root):
         self.root = root
@@ -347,6 +48,18 @@ class MainWindow:
         self.petriController.placeControls()
         self.waterShed.placeControls()
         self.yoloController.placeControls()
+        self.canvas = tk.Canvas(self.root, bg="black", width=self.resolution.x, height=self.resolution.y)
+        self.canvas.pack(side="top", fill="both", expand=True)
+        self.canvas.bind("<ButtonPress-1>", self.on_left_button_press)
+        self.canvas.bind("<ButtonRelease-1>", self.on_left_button_release)
+        self.canvas.bind("<B1-Motion>", self.on_move_press)
+        self.canvas.bind("<ButtonPress-3>", self.on_right_button_press)
+        self.canvas.bind("<ButtonRelease-3>", self.on_right_button_release)
+        self.canvas.pack()
+
+        self.removedRect = None
+        self.removedAreas: List[Rectangle] = []
+        self.newArea = Rectangle(0,0,0,0)
         
         # Feed de vídeo da webcam
         self.cap = cv2.VideoCapture(0)  # Webcam padrão
@@ -358,6 +71,46 @@ class MainWindow:
         
         # Fechar janela com segurança
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def on_right_button_press(self, event):
+        self.deleteBoxPoint:Point = Point(event.x, event.y)
+
+    def on_right_button_release(self, event):
+        idxDelete = 0
+        closestBox = None
+        for i, box in enumerate(self.removedAreas):
+            if box.contains(self.deleteBoxPoint):
+                idxDelete = i
+                if closestBox is None:
+                    closestBox = box
+                else:
+                    if (closestBox.center - self.deleteBoxPoint).abs() > (box.center - self.deleteBoxPoint).abs():
+                        closestBox = box
+        if closestBox != None:
+            self.removedAreas.pop(idxDelete)
+
+    def on_left_button_press(self, event):
+        # save mouse drag start position
+        with MainWindow.rectangleRemovingLock:
+            self.rect = None
+            self.newArea.update_x(event.x)
+            self.newArea.update_y(event.y)
+
+        # create rectangle if not yet exist
+        #if not self.rect:
+        self.removedRect = self.canvas.create_rectangle(self.newArea.x, self.newArea.y, 1, 1, fill="black")
+
+    def on_move_press(self, event):
+        self.newArea.update_xx(event.x)
+        self.newArea.update_yy(event.y)
+        self.newArea.updateValid()
+
+        # expand rectangle as you drag the mouse
+        self.canvas.coords(self.removedRect, self.newArea.x, self.newArea.y, self.newArea.xx, self.newArea.yy)
+
+    def on_left_button_release(self, event):
+        self.removedAreas.append(self.newArea)
+        self.newArea = Rectangle(0,0,0,0)
     
     def getDebugVariables(self):
         varDict = OrderedDict()
@@ -379,6 +132,11 @@ class MainWindow:
             )
         return frame
     
+    def _arrayToImage(self, data: np.ndarray) -> tk.PhotoImage:
+        data = cv2.cvtColor(data, cv2.COLOR_BGR2RGB)
+        image = Image.fromarray(data)
+        return ImageTk.PhotoImage(image=image)
+
     def updateVideoFeed(self):
         """Atualiza o feed de vídeo com a elipse desenhada."""
         while self.running:
@@ -420,16 +178,32 @@ class MainWindow:
             self.petri.findParameters()
             frame = self.petri.drawCentroid(frame)
 
-            _, bboxes = drawRectangles(output, (self.resolution.x, self.resolution.y), nms_thr, frame)
+            if self.newArea.isValid():
+                cv2.rectangle(frame, (self.newArea.x, self.newArea.y), (self.newArea.xx, self.newArea.yy), (0, 0, 0), -1)
+ 
+            for area in self.removedAreas:
+                cv2.rectangle(frame, (area.x, area.y), (area.xx, area.yy), (0, 0, 0), -1)
+
+            _, bboxes = drawRectangles(
+                output, 
+                (self.resolution.x, self.resolution.y), 
+                nms_thr, 
+                frame, 
+                self.removedAreas,
+            )
             
             self.colonies = [Colony(r, self.petri.getCentroid(), self.petri.getConversionFactor()) for r in bboxes]
 
-            for c in self.colonies:
-                print("Area(mm^2): ", c.getArea(), " - Pixel Area(px^2): ", c.getPixelArea(), " - Offset(mm): ", c.getOffset())
+            # for c in self.colonies:
+            #     print("Area(mm^2): ", c.getArea(), " - Pixel Area(px^2): ", c.getPixelArea(), " - Offset(mm): ", c.getOffset())
             
             # Exibe o vídeo em uma janela do OpenCV
 
-            cv2.imshow("Detection", frame)
+            imageFrame = self._arrayToImage(frame)
+            self.canvas.create_image(0, 0, image=imageFrame, anchor="nw")
+            self.canvas.image = imageFrame
+
+            # cv2.imshow("Detection", frame)
 
             ellapsedTime = time.time() - startTime
             if ellapsedTime < 1/30:

@@ -1,0 +1,111 @@
+
+import cv2
+
+import numpy as np
+
+from utils.frame.geometry import Circle, Rectangle, Point
+
+class PetriDish():
+    def __init__(self, diameter: float):
+        self._segmentation = None
+
+        self._pixelCentroid: Point = Point(0, 0)
+        self._pixelRadius: float = 0
+        self._pixelArea: float = 0
+
+        self._diameter: float = diameter
+        self._conversionFactor: float = 0
+
+    def getCentroid(self) -> Point:
+        return self._pixelCentroid
+
+    def drawCentroid(self, frame):
+        frame = cv2.line(
+            frame, 
+            (self._pixelCentroid.x, self._pixelCentroid.y), 
+            (self._pixelCentroid.x, self._pixelCentroid.y), 
+            (255,0,0), 
+            10,
+        )
+        return frame
+    
+    def getConversionFactor(self) -> float:
+        return self._conversionFactor
+    
+    def setDishDiameter(self, diameter: float) -> None:
+        self._diameter = diameter
+
+    def _updateConversionFactor(self) -> None:
+        if self._diameter == 0:
+            return
+        
+        realArea = np.pi * (self._diameter / 2.0) ** 2
+        self._conversionFactor = realArea / self._pixelArea
+
+    def findParameters(self) -> None:
+        imageMoments = cv2.moments(self._segmentation)
+
+        # Compute centroid
+        cx = int(imageMoments["m10"]/imageMoments["m00"])
+        cy = int(imageMoments["m01"]/imageMoments["m00"])
+
+        self._pixelCentroid = Point(cx, cy)
+
+        # Calculate radius
+        self._pixelArea = self._segmentation.sum()
+        self._pixelRadius = np.sqrt(self._pixelArea / np.pi)
+
+        self._updateConversionFactor()
+    
+    def segmentDish(self, image) -> np.ndarray:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+
+        # Morph open using elliptical shaped kernel
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3))
+        opening = 255 - cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=3)
+
+        dishSegmentationMask = opening[..., np.newaxis].repeat(3, axis=2)
+        dishSegmentationMask[..., 0:2] = 0
+
+        self._segmentation = (opening != 0).astype(float)
+
+        return dishSegmentationMask
+
+
+class Colony():
+    def __init__(self, detection: Rectangle, dishPixelCenter: Point, conversionFactor: float):
+        self._conversionFactor: float = conversionFactor
+        self._detection: Rectangle = detection
+        self._coordinateZero: Point = dishPixelCenter
+        
+        self._limits = Circle(
+            self._detection.cx, 
+            self._detection.cy, 
+            (self._detection.h + self._detection.w) / 2,
+        )
+
+    def getPixelOffset(self) -> Point:
+        return self._limits.center
+
+    def getOffset(self) -> Point:
+        return (self._limits.center - self._coordinateZero) * np.sqrt(self._conversionFactor)
+
+    def getConversionFactor(self) -> float:
+        return self._conversionFactor
+    
+    def setConversionFactor(self, factor: float) -> None:
+        self._conversionFactor = factor
+
+    def getPixelArea(self) -> float:
+        '''
+            Returns the area in pixels.
+        '''
+        return self._limits.area
+    
+    def getArea(self) -> float:
+        '''
+            Returns the real area after convertion.
+        '''
+        return self._limits.area * self._conversionFactor
+

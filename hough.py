@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 
 # Load image, grayscale, Otsu's threshold
-image = cv2.imread("microbial-dataset-generation/data/style_dishes/6/edit.jpg")
+image = cv2.imread("./microbial-dataset-generation/data/style_dishes/6/2019-06-25_02365_nocover.jpg")
 gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
 

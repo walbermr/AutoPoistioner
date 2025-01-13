@@ -39,4 +39,4 @@ class Point():
         return math.sqrt(self.x**2 + self.y**2)
     
     def __str__(self) -> str:
-        return f"{self.x}, {self.y}"
+        return f"Point: {self.x}, {self.y}"
