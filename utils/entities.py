@@ -5,6 +5,25 @@ import numpy as np
 
 from utils.frame.geometry import Circle, Rectangle, Point
 
+
+class ConversionFactor:
+    def __init__(self, value=0):
+        self._factor = 0
+        self._linear_factor = 0
+        self.update(value)
+
+    def update(self, value: float):
+        self._factor = value
+        self._linear_factor = np.sqrt(self._factor / np.pi)
+
+    @property
+    def linear(self) -> float:
+        return self._linear_factor
+
+    def __mul__(self, num) -> float:
+        return self._factor * num
+
+
 class PetriDish():
     def __init__(self, diameter: float):
         self._segmentation = None
@@ -14,7 +33,7 @@ class PetriDish():
         self._pixelArea: float = 0
 
         self._diameter: float = diameter
-        self._conversionFactor: float = 0
+        self._conversionFactor: float = ConversionFactor()
 
     def getCentroid(self) -> Point:
         return self._pixelCentroid
@@ -29,7 +48,7 @@ class PetriDish():
         )
         return frame
     
-    def getConversionFactor(self) -> float:
+    def getConversionFactor(self) -> ConversionFactor:
         return self._conversionFactor
     
     def setDishDiameter(self, diameter: float) -> None:
@@ -40,7 +59,7 @@ class PetriDish():
             return
         
         realArea = np.pi * (self._diameter / 2.0) ** 2
-        self._conversionFactor = realArea / self._pixelArea
+        self._conversionFactor.update(realArea / self._pixelArea)
 
     def findParameters(self) -> None:
         imageMoments = cv2.moments(self._segmentation)
@@ -74,8 +93,8 @@ class PetriDish():
 
 
 class Colony():
-    def __init__(self, detection: Rectangle, dishPixelCenter: Point, conversionFactor: float):
-        self._conversionFactor: float = conversionFactor
+    def __init__(self, detection: Rectangle, dishPixelCenter: Point, conversionFactor: ConversionFactor):
+        self._conversionFactor: ConversionFactor = conversionFactor
         self._detection: Rectangle = detection
         self._coordinateZero: Point = dishPixelCenter
         
@@ -89,12 +108,12 @@ class Colony():
         return self._limits.center
 
     def getOffset(self) -> Point:
-        return (self._limits.center - self._coordinateZero) * np.sqrt(self._conversionFactor)
+        return (self._limits.center - self._coordinateZero) * self._conversionFactor.linear
 
-    def getConversionFactor(self) -> float:
+    def getConversionFactor(self) -> ConversionFactor:
         return self._conversionFactor
     
-    def setConversionFactor(self, factor: float) -> None:
+    def setConversionFactor(self, factor: ConversionFactor) -> None:
         self._conversionFactor = factor
 
     def getPixelArea(self) -> float:
