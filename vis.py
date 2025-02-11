@@ -17,6 +17,7 @@ from utils.frame.drawings import drawRectangles
 from utils.entities import PetriDish, Colony
 from utils.controllers import PetriDishController, FrameController, YoloController
 from utils.frame.geometry import Rectangle, Point
+from utils.frame import center_crop
 
 import threading
 
@@ -37,16 +38,16 @@ class MainWindow:
         # self.petriEllipse = EllipseController(self.resolution, root=self.root)
         self.petriController: PetriDishController = PetriDishController(root=self.root)
         self.petri: PetriDish = PetriDish(self.petriController.diameter)
-        self.frameController: FrameController = FrameController(self.resolution.y, self.resolution.x, root=self.root)
-        self.waterShed: WaterShed = WaterShed(self.root)
+        # self.frameController: FrameController = FrameController(self.resolution.y, self.resolution.x, root=self.root)
+        # self.waterShed: WaterShed = WaterShed(self.root)
         self.yoloController: YoloController = YoloController(self.root)
         self.colonies: List[Colony] = []
 
         # Interface gráfica
         # self.petriEllipse.placeControls()
-        self.frameController.placeControls()
+        # self.frameController.placeControls()
         self.petriController.placeControls()
-        self.waterShed.placeControls()
+        # self.waterShed.placeControls()
         self.yoloController.placeControls()
         self.canvas = tk.Canvas(self.root, bg="black", width=self.resolution.x, height=self.resolution.y)
         self.canvas.pack(side="top", fill="both", expand=True)
@@ -146,12 +147,13 @@ class MainWindow:
             # frame = cv2.imread("./images/316_jpg.rf.4c49cf826e0c9700da5e7f4019a844d6.jpg")
             # frame = cv2.imread("./images/17111_jpg.rf.512a1a293c6b3a381bbcd6abc1e1b4fc.jpg")
             frame = cv2.imread("./microbial-dataset-generation/data/style_dishes/6/2019-06-25_02365_nocover.jpg")
+            frame = center_crop(frame, (640, 640))
             
             frame = cv2.resize(frame, (self.resolution.x, self.resolution.y))
-            frame = frame[
-                self.frameController.yTop:self.frameController.yDown,
-                self.frameController.xLeft:self.frameController.xRight
-            ]
+            # frame = frame[
+            #     self.frameController.yTop:self.frameController.yDown,
+            #     self.frameController.xLeft:self.frameController.xRight
+            # ]
             
             nms_thr = self.yoloController.threshold.get()
             output = self.detector.inference(frame, nms_thr)
