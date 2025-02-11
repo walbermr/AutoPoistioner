@@ -29,7 +29,7 @@ class MainWindow:
 
     def __init__(self, root):
         self.root = root
-        self.root.title("Desenhando Elipse no Feed de Vídeo")
+        self.root.title("Bacteria Detection")
         self.resolution: Namespace = Namespace(x=640, y=640)
         self.detector: ONNXModel = ONNXModel(model_path="./models/bacteria-filtered-smallbox.onnx", custom_export=True)
         
@@ -152,29 +152,12 @@ class MainWindow:
                 self.frameController.yTop:self.frameController.yDown,
                 self.frameController.xLeft:self.frameController.xRight
             ]
-            # if not ret:
-            #     continue
-            
-            # Parâmetros da elipse
-            # center = (self.petriEllipse.centerX.get(), self.petriEllipse.centerY.get())
-            # axes = (self.petriEllipse.axisX.get(), self.petriEllipse.axisY.get())
-            # angle = self.petriEllipse.angle.get()
-            
-            # thickness = self.petriEllipse.thickness.get()
-
-            # if DEBUG:
-            #     frame = self.displayDebug(frame, varDict=self.getDebugVariables())
-            
-            # Desenha a elipse no quadro
-            # cv2.ellipse(frame, center, axes, angle, 0, 360, (0, 255, 0), thickness)
-
-            # frame, _ = self.waterShed.process(frame)
             
             nms_thr = self.yoloController.threshold.get()
             output = self.detector.inference(frame, nms_thr)
             
             self.petri.setDishDiameter(self.petriController.diameter)
-            frame = self.petri.segmentDish(frame)
+            _ = self.petri.segmentDish(frame)
             self.petri.findParameters()
             frame = self.petri.drawCentroid(frame)
 
@@ -193,9 +176,6 @@ class MainWindow:
             )
             
             self.colonies = [Colony(r, self.petri.getCentroid(), self.petri.getConversionFactor()) for r in bboxes]
-
-            # for c in self.colonies:
-            #     print("Area(mm^2): ", c.getArea(), " - Pixel Area(px^2): ", c.getPixelArea(), " - Offset(mm): ", c.getOffset())
             
             # Exibe o vídeo em uma janela do OpenCV
 
@@ -214,16 +194,14 @@ class MainWindow:
                 self.running = False
                 MainWindow.closeEvent.clear()
                 cv2.destroyAllWindows()
-                # self.on_close()
+                self.root.quit()
                 return
     
     def on_close(self):
         """Encerra o programa com segurança."""
         self.running = False
         MainWindow.closeEvent.set()
-        self.cap.release()
-
-        self.root.destroy()
+        # self.cap.release()
 
 # Iniciar o programa
 if __name__ == "__main__":

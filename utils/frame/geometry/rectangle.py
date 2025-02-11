@@ -21,7 +21,7 @@ class Rectangle():
         self.valid = self.updateValid()
 
     def contains(self, p:Point):
-        return p.x >= self.x and p.y >= self.y and p.x <= self.xx and p.y <= self.yy
+        return self.x <= p.x <= self.xx and self.y <= p.y <= self.yy
     
     def update_x(self, x):
         self.x = x
