@@ -18,6 +18,7 @@ from utils.entities import PetriDish, Colony
 from utils.controllers import PetriDishController, FrameController, YoloController
 from utils.frame.geometry import Rectangle, Point
 from utils.frame import center_crop
+from utils.camera import list_ports
 
 import threading
 
@@ -61,9 +62,15 @@ class MainWindow:
         self.removedRect = None
         self.removedAreas: List[Rectangle] = []
         self.newArea = Rectangle(0,0,0,0)
+
+        camera_options = ["Camera %d" %(i) for i in list_ports()[1]] #etc
+        self.camera_var = tk.StringVar(self.root)
+        self.camera_var.set(camera_options[0]) # default value
+        camera_dropdown = tk.OptionMenu(self.root, self.camera_var, *camera_options, command=self.on_camera_change)
+        camera_dropdown.pack()
         
         # Feed de vídeo da webcam
-        self.cap = cv2.VideoCapture(0)  # Webcam padrão
+        self.cap = cv2.VideoCapture(int(camera_options[0][-1]))  # Webcam padrão
         self.running = True
         
         # Iniciar a thread para atualizar o feed de vídeo
@@ -72,6 +79,10 @@ class MainWindow:
         
         # Fechar janela com segurança
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def on_camera_change(self, value):
+        self.cap.release()
+        self.cap = cv2.VideoCapture(int(value[-1]))  # Webcam padrão
 
     def on_right_button_press(self, event):
         self.deleteBoxPoint:Point = Point(event.x, event.y)
@@ -142,11 +153,11 @@ class MainWindow:
         """Atualiza o feed de vídeo com a elipse desenhada."""
         while self.running:
             startTime = time.time()
-            # ret, frame = self.cap.read()
+            ret, frame = self.cap.read()
 
             # frame = cv2.imread("./images/316_jpg.rf.4c49cf826e0c9700da5e7f4019a844d6.jpg")
             # frame = cv2.imread("./images/17111_jpg.rf.512a1a293c6b3a381bbcd6abc1e1b4fc.jpg")
-            frame = cv2.imread("./microbial-dataset-generation/data/style_dishes/6/2019-06-25_02365_nocover.jpg")
+            # frame = cv2.imread("./microbial-dataset-generation/data/style_dishes/6/2019-06-25_02365_nocover.jpg")
             frame = center_crop(frame, (640, 640))
             
             frame = cv2.resize(frame, (self.resolution.x, self.resolution.y))
@@ -203,7 +214,7 @@ class MainWindow:
         """Encerra o programa com segurança."""
         self.running = False
         MainWindow.closeEvent.set()
-        # self.cap.release()
+        self.cap.release()
 
 # Iniciar o programa
 if __name__ == "__main__":

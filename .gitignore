@@ -2,3 +2,5 @@ microbial-dataset-generation/
 outputs/
 *.onnx
 __pycache__
+build/
+dist/

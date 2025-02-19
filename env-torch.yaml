@@ -1,5 +1,6 @@
-name: bio-gen-lean
+name: bio-gen
 channels:
+  - pytorch
   - nvidia
 dependencies:
   - python=3.9
@@ -12,8 +13,12 @@ dependencies:
   - cudatoolkit=11.3
   - pillow
   - pip:
+    - --extra-index-url https://download.pytorch.org/whl/cu117
+    - torch==1.13.0+cu117
+    - torchaudio==0.13.0+cu117
+    - torchmetrics==0.11.0
+    - torchvision==0.14.0+cu117
     - pyyaml==6.0
-    - pyinstaller
     - yarl
     - click==8.0.3
     - cv==1.0.0
