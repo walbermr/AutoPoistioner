@@ -1,11 +1,11 @@
-from typing import List
+from typing import List, Tuple
 
 from .geometry.rectangle import Rectangle
 from .geometry.boundingbox import BoundingBox
 
 
-def drawRectangles(outputs, frame_resolution, score_thr, frame, removable_area:List[Rectangle]):
-    rects = []
+def getBboxes(outputs, frame_resolution, score_thr, removable_area:List[Rectangle]):
+    rects:List[Tuple[int]] = []
     boxes:List[Rectangle] = []
 
     for output in outputs:
@@ -26,10 +26,14 @@ def drawRectangles(outputs, frame_resolution, score_thr, frame, removable_area:L
                             remove_box |= area.contains(bbox.center)
 
                     if not remove_box:
-                        bbox.print_bbox(frame)
                         boxes.append(bbox)
                         rects.append((x, y, x+w, y+h))
         except:
             print("No detections.")
 
     return rects, boxes
+
+
+def drawBoxes(boxes:List[Rectangle], frame):
+    for bbox in boxes:
+        bbox.print_bbox(frame)
