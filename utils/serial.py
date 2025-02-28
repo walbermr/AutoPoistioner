@@ -65,7 +65,7 @@ class SerialWrapper:
             self.current_data = 0
 
     def sendData(self, data):
-        if self.ser is not None:
+        if self.ser is not None and data is not None:
             data = "PT" + data + "\n"
             print("Data sent:", data, end='')
             try:
@@ -88,6 +88,8 @@ class SerialWrapper:
                         if self.current_data < len(self.data_buffer):
                             serial_data = self.data_buffer[self.current_data]
                             self.current_data += 1
+                        else:
+                            serial_data = None
                     
                     self.sendData(serial_data)
 
