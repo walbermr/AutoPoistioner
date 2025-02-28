@@ -8,6 +8,12 @@ int buttonState = 0;  // variable for reading the pushbutton status
 const unsigned int MAX_INPUT = 50;
 static char input_line [MAX_INPUT];
 static unsigned int input_pos = 0;
+bool buttonPressed = false;
+
+enum SerialMessages {
+  NEXT_POINT = 'o',
+};
+
 
 void setup() {
   // initialize the LED pin as an output:
@@ -21,20 +27,22 @@ bool isButtonPressed() {
   return digitalRead(buttonPin) == HIGH;
 }
 
-void process_data(const char * data) {
+void process_data(const char* data) {
   Serial.println(data);
 }
 
 void processIncomingByte(const byte inByte){
   if(inByte == '\n') {
     input_line[input_pos] = 0;
-    // terminator reached! process input_line here ...
     process_data(input_line);
-    // reset buffer for next time
     input_pos = 0;
-  } else if((inByte >= '0' && inByte <= '9') || inByte == '.') {
+  } else if((inByte >= '0' && inByte <= '9') || inByte == '.' || inByte == '-') {
     if (input_pos < (MAX_INPUT - 1))
       input_line[input_pos++] = inByte;
+  } else if(inByte == ','){
+    input_line[input_pos] = 0;
+    process_data(input_line);
+    input_pos = 0;
   } else {
     return;
   }
@@ -47,11 +55,18 @@ void loop() {
   }
 
   // check if the pushbutton is pressed. If it is, the buttonState is HIGH:
-  if(isButtonPressed()) {
+  if(isButtonPressed() && !buttonPressed) {
     // turn LED on:
     digitalWrite(ledPin, HIGH);
-  } else {
+    delay(10);
+    buttonPressed = true;
+
+    String message = "ENTER\n";
+    Serial.write(message.begin(), message.length());
+  } else if(!isButtonPressed() && buttonPressed) {
     // turn LED off:
     digitalWrite(ledPin, LOW);
+    buttonPressed = false;
   }
+
 }

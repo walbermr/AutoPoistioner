@@ -52,7 +52,13 @@ class MainWindow:
         self.serial = SerialWrapper()
         serial_options = self.serial.get_available_ports() #etc
         self.serial_var = tk.StringVar(self.root)
-        self.serial_var.set(serial_options[0]) # default value
+        
+        if len(serial_options) != 0:
+            self.serial_var.set(serial_options[0]) # default value
+        else:
+            self.serial_var.set("") # default value
+            serial_options = [""]
+
         serial_dropdown = tk.OptionMenu(self.root, self.serial_var, *serial_options, command=self.on_serial_change)
         serial_dropdown.pack(side="left")
         # self.waterShed.placeControls()
@@ -83,12 +89,17 @@ class MainWindow:
         # Iniciar a thread para atualizar o feed de vídeo
         self.video_thread: threading.Thread = threading.Thread(target=self.updateVideoFeed)
         self.video_thread.start()
+
+        self.serial_thread: threading.Thread = threading.Thread(target=self.serial.serialMain)
+        self.serial_thread.start()
         
         # Fechar janela com segurança
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def on_serial_change(self, value):
-        self.serial.open_serial(value)
+        print(value)
+        if value != "":
+            self.serial.open_serial(value)
 
     def on_camera_change(self, value):
         self.cap.release()
@@ -191,8 +202,8 @@ class MainWindow:
             )
             
             self.colonies = [Colony(r, self.petri.getCentroid(), self.petri.getConversionFactor()) for r in bboxes]
-            self.serial.sendData(self.serial.get_serial_message(self.colonies))
-            
+            self.serial.setPoints(self.colonies)
+
             # Exibe o vídeo em uma janela do OpenCV
 
             imageFrame = self._arrayToImage(frame)
@@ -217,6 +228,7 @@ class MainWindow:
         """Encerra o programa com segurança."""
         self.running = False
         MainWindow.closeEvent.set()
+        self.serial.closeEvent.set()
         self.cap.release()
 
 # Iniciar o programa
