@@ -30,6 +30,6 @@ def drawRectangles(outputs, frame_resolution, score_thr, frame, removable_area:L
                         boxes.append(bbox)
                         rects.append((x, y, x+w, y+h))
         except:
-            print("Maybe no camera feed.")
+            print("No detections.")
 
     return rects, boxes

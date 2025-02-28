@@ -19,6 +19,7 @@ from utils.controllers import PetriDishController, FrameController, YoloControll
 from utils.frame.geometry import Rectangle, Point
 from utils.frame import center_crop
 from utils.camera import list_ports
+from utils.serial import SerialWrapper
 
 import threading
 
@@ -48,6 +49,12 @@ class MainWindow:
         # self.petriEllipse.placeControls()
         # self.frameController.placeControls()
         self.petriController.placeControls()
+        self.serial = SerialWrapper()
+        serial_options = self.serial.get_available_ports() #etc
+        self.serial_var = tk.StringVar(self.root)
+        self.serial_var.set(serial_options[0]) # default value
+        serial_dropdown = tk.OptionMenu(self.root, self.serial_var, *serial_options, command=self.on_serial_change)
+        serial_dropdown.pack(side="left")
         # self.waterShed.placeControls()
         self.yoloController.placeControls()
         self.canvas = tk.Canvas(self.root, bg="black", width=self.resolution.x, height=self.resolution.y)
@@ -79,6 +86,9 @@ class MainWindow:
         
         # Fechar janela com segurança
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def on_serial_change(self, value):
+        self.serial.open_serial(value)
 
     def on_camera_change(self, value):
         self.cap.release()
@@ -155,16 +165,8 @@ class MainWindow:
             startTime = time.time()
             ret, frame = self.cap.read()
 
-            # frame = cv2.imread("./images/316_jpg.rf.4c49cf826e0c9700da5e7f4019a844d6.jpg")
-            # frame = cv2.imread("./images/17111_jpg.rf.512a1a293c6b3a381bbcd6abc1e1b4fc.jpg")
             # frame = cv2.imread("./microbial-dataset-generation/data/style_dishes/6/2019-06-25_02365_nocover.jpg")
-            frame = center_crop(frame, (640, 640))
-            
-            frame = cv2.resize(frame, (self.resolution.x, self.resolution.y))
-            # frame = frame[
-            #     self.frameController.yTop:self.frameController.yDown,
-            #     self.frameController.xLeft:self.frameController.xRight
-            # ]
+            frame = center_crop(frame, (self.resolution.x, self.resolution.y))
             
             nms_thr = self.yoloController.threshold.get()
             output = self.detector.inference(frame, nms_thr)
@@ -189,6 +191,7 @@ class MainWindow:
             )
             
             self.colonies = [Colony(r, self.petri.getCentroid(), self.petri.getConversionFactor()) for r in bboxes]
+            self.serial.sendData(self.serial.get_serial_message(self.colonies))
             
             # Exibe o vídeo em uma janela do OpenCV
 
