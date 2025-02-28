@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": "E:/Projetos/arduino-demo"
+		},
+		{
+			"name": "arduino-button",
+			"path": ".."
+		}
+	],
+	"settings": {}
+}
