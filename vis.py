@@ -1,19 +1,20 @@
 import cv2
 import time
+import copy
 import numpy as np
 import tkinter as tk
 
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from argparse import Namespace
 from PIL import Image, ImageTk
 
-from typing import List
+from typing import List, Deque
 
 from detection.traditional.watershed import WaterShed
 
 from detection.deep.yolov6 import ONNXModel
 
-from utils.frame.drawings import drawRectangles
+from utils.frame.drawings import getBboxes, drawBoxes
 from utils.entities import PetriDish, Colony
 from utils.controllers import PetriDishController, FrameController, YoloController
 from utils.frame.geometry import Rectangle, Point
@@ -28,13 +29,20 @@ DEBUG = True
 
 class MainWindow:
     closeEvent = threading.Event()
+    processEvent = threading.Event()
+
     rectangleRemovingLock = threading.Lock()
+    frameLock = threading.Lock()
 
     def __init__(self, root):
         self.root = root
+        self.running = True
         self.root.title("Bacteria Detection")
         self.resolution: Namespace = Namespace(x=640, y=640)
-        self.detector: ONNXModel = ONNXModel(model_path="./models/bacteria-filtered-smallbox.onnx", custom_export=True)
+        self.detector: ONNXModel = ONNXModel(
+            model_path="./models/bacteria-filtered-smallbox.onnx", 
+            custom_export=True,
+        )
         
         # Variáveis para os parâmetros da elipse
         # self.petriEllipse = EllipseController(self.resolution, root=self.root)
@@ -75,6 +83,7 @@ class MainWindow:
         self.removedRect = None
         self.removedAreas: List[Rectangle] = []
         self.newArea = Rectangle(0,0,0,0)
+        self.bboxes = []
 
         camera_options = ["Camera %d" %(i) for i in list_ports()[1]] #etc
         self.camera_var = tk.StringVar(self.root)
@@ -84,14 +93,17 @@ class MainWindow:
         
         # Feed de vídeo da webcam
         self.cap = cv2.VideoCapture(int(camera_options[0][-1]))  # Webcam padrão
-        self.running = True
+        self.meanFrame:np.ndarray = np.array(0)
+        self.frameBuffer:Deque[np.ndarray] = []
         
         # Iniciar a thread para atualizar o feed de vídeo
-        self.video_thread: threading.Thread = threading.Thread(target=self.updateVideoFeed)
-        self.video_thread.start()
-
+        self.detection_thread: threading.Thread = threading.Thread(target=self.detectionMain)
+        self.video_thread: threading.Thread = threading.Thread(target=self.videoMain)
         self.serial_thread: threading.Thread = threading.Thread(target=self.serial.serialMain)
+
+        self.detection_thread.start()
         self.serial_thread.start()
+        self.video_thread.start()
         
         # Fechar janela com segurança
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -169,23 +181,19 @@ class MainWindow:
         data = cv2.cvtColor(data, cv2.COLOR_BGR2RGB)
         image = Image.fromarray(data)
         return ImageTk.PhotoImage(image=image)
-
-    def updateVideoFeed(self):
-        """Atualiza o feed de vídeo com a elipse desenhada."""
+    
+    def videoMain(self):
         while self.running:
             startTime = time.time()
             ret, frame = self.cap.read()
-
-            # frame = cv2.imread("./microbial-dataset-generation/data/style_dishes/6/2019-06-25_02365_nocover.jpg")
             frame = center_crop(frame, (self.resolution.x, self.resolution.y))
             
-            nms_thr = self.yoloController.threshold.get()
-            output = self.detector.inference(frame, nms_thr)
-            
-            self.petri.setDishDiameter(self.petriController.diameter)
-            _ = self.petri.segmentDish(frame)
-            self.petri.findParameters()
-            frame = self.petri.drawCentroid(frame)
+            with MainWindow.frameLock:
+                if len(self.frameBuffer) == 0:
+                    self.frameBuffer = deque(frame[np.newaxis].repeat(10, 0))
+                else:
+                    self.frameBuffer.popleft()
+                    self.frameBuffer.append(frame)
 
             if self.newArea.isValid():
                 cv2.rectangle(frame, (self.newArea.x, self.newArea.y), (self.newArea.xx, self.newArea.yy), (0, 0, 0), -1)
@@ -193,46 +201,83 @@ class MainWindow:
             for area in self.removedAreas:
                 cv2.rectangle(frame, (area.x, area.y), (area.xx, area.yy), (0, 0, 0), -1)
 
-            _, bboxes = drawRectangles(
-                output, 
-                (self.resolution.x, self.resolution.y), 
-                nms_thr, 
-                frame, 
-                self.removedAreas,
-            )
-            
-            self.colonies = [Colony(r, self.petri.getCentroid(), self.petri.getConversionFactor()) for r in bboxes]
-            self.serial.setPoints(self.colonies)
+            drawBoxes(self.bboxes, frame)
 
             # Exibe o vídeo em uma janela do OpenCV
-
             imageFrame = self._arrayToImage(frame)
             self.canvas.create_image(0, 0, image=imageFrame, anchor="nw")
             self.canvas.image = imageFrame
 
-            # cv2.imshow("Detection", frame)
+            elapsedTime = time.time() - startTime
+            if elapsedTime < 1/60:
+                time.sleep(1/60 - elapsedTime)
 
-            ellapsedTime = time.time() - startTime
-            if ellapsedTime < 1/30:
-                time.sleep(1/30 - ellapsedTime)
-            
+            if MainWindow.closeEvent.isSet() or not self.running:
+                MainWindow.processEvent.set()
+                break
+
+        self.root.quit()
+
+    def detectionMain(self):
+        """Atualiza o feed de vídeo com a elipse desenhada."""
+        while self.running:
+            MainWindow.processEvent.wait()
             # Encerra se a tecla 'q' for pressionada
-            if MainWindow.closeEvent.isSet() or cv2.waitKey(1) & 0xFF == ord('q'):
-                self.running = False
-                MainWindow.closeEvent.clear()
-                cv2.destroyAllWindows()
-                self.root.quit()
+            if MainWindow.closeEvent.isSet() or not self.running:
                 return
+
+            startTime = time.time()
+            with MainWindow.frameLock:
+                frame = np.mean(self.frameBuffer, axis=0).astype(np.uint8)
+            
+            if len(frame.shape) == 0:
+                time.sleep(0.001)
+                continue
+            
+            nms_thr = self.yoloController.threshold.get()
+            output = self.detector.inference(frame, nms_thr)
+            
+            self.petri.setDishDiameter(self.petriController.diameter)
+            _ = self.petri.segmentDish(frame)
+            self.petri.findParameters()
+
+            _, self.bboxes = getBboxes(
+                output, 
+                (self.resolution.x, self.resolution.y), 
+                nms_thr, 
+                self.removedAreas,
+            )
+            
+            self.colonies = [
+                Colony(
+                    r, 
+                    self.petri.getCentroid(), 
+                    self.petri.getConversionFactor()
+                ) 
+                for r in self.bboxes
+            ]
+            self.serial.setPoints(self.colonies)
+
+            elapsedTime = time.time() - startTime
+            if elapsedTime < 1/30:
+                time.sleep(1/30 - elapsedTime)
     
     def on_close(self):
         """Encerra o programa com segurança."""
         self.running = False
         MainWindow.closeEvent.set()
+        MainWindow.processEvent.set()
         self.serial.closeEvent.set()
-        self.cap.release()
 
 # Iniciar o programa
 if __name__ == "__main__":
     root = tk.Tk()
     app = MainWindow(root)
     root.mainloop()
+    
+    app.video_thread.join()
+    app.serial_thread.join()
+    app.detection_thread.join()
+    app.cap.release()
+
+    cv2.destroyAllWindows()
