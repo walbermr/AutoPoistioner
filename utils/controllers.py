@@ -208,3 +208,25 @@ class ExclusionController(Controls):
     def placeControls(self):
         return super().placeControls()
     
+
+class SerialController(Controls):
+    def __init__(self, root, options, on_serial_change, name):
+        self.on_serial_change = on_serial_change
+
+        self.serial_var = tk.StringVar(root)
+        self.options = options
+        
+        if len(self.options) != 0:
+            self.serial_var.set(self.options[0]) # default value
+        else:
+            self.serial_var.set("") # default value
+            self.options = [""]
+
+        self.label_name = name
+        super().__init__(root)
+    
+    def placeControls(self):
+        tk.Label(self.controls_frame, text=self.label_name + ":").pack()
+
+        serial_dropdown = tk.OptionMenu(self.root, self.serial_var, *self.options, command=self.on_serial_change)
+        serial_dropdown.pack(side="left")

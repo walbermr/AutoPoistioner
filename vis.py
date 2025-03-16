@@ -16,7 +16,7 @@ from detection.deep.yolov6 import ONNXModel
 
 from utils.frame.drawings import getBboxes, drawBoxes
 from utils.entities import PetriDish, Colony
-from utils.controllers import PetriDishController, FrameController, YoloController
+from utils.controllers import PetriDishController, FrameController, YoloController, SerialController
 from utils.frame.geometry import Rectangle, Point
 from utils.frame import center_crop
 from utils.camera import list_ports
@@ -58,17 +58,14 @@ class MainWindow:
         # self.frameController.placeControls()
         self.petriController.placeControls()
         self.serial = SerialWrapper()
-        serial_options = self.serial.get_available_ports() #etc
-        self.serial_var = tk.StringVar(self.root)
-        
-        if len(serial_options) != 0:
-            self.serial_var.set(serial_options[0]) # default value
-        else:
-            self.serial_var.set("") # default value
-            serial_options = [""]
+        self.serialController = SerialController(
+            root=self.root, 
+            options=self.serial.get_available_ports(), 
+            on_serial_change=self.on_serial_change,
+            name="Serial Port",
+        )
+        self.serialController.placeControls()
 
-        serial_dropdown = tk.OptionMenu(self.root, self.serial_var, *serial_options, command=self.on_serial_change)
-        serial_dropdown.pack(side="left")
         # self.waterShed.placeControls()
         self.yoloController.placeControls()
         self.canvas = tk.Canvas(self.root, bg="black", width=self.resolution.x, height=self.resolution.y)
@@ -86,10 +83,20 @@ class MainWindow:
         self.bboxes = []
 
         camera_options = ["Camera %d" %(i) for i in list_ports()[1]] #etc
-        self.camera_var = tk.StringVar(self.root)
-        self.camera_var.set(camera_options[0]) # default value
-        camera_dropdown = tk.OptionMenu(self.root, self.camera_var, *camera_options, command=self.on_camera_change)
-        camera_dropdown.pack()
+        self.cameraController = SerialController(
+            root=self.root,
+            options=camera_options,
+            on_serial_change=self.on_camera_change,
+            name="Camera ID",
+        )
+        self.cameraController.placeControls()
+        self.snapFrame = tk.Button(
+            root,
+            text="Process Frame",
+            command=self.getPredictions,
+            background="green"
+        )
+        self.snapFrame.pack()
         
         # Feed de vídeo da webcam
         self.cap = cv2.VideoCapture(int(camera_options[0][-1]))  # Webcam padrão
@@ -107,6 +114,9 @@ class MainWindow:
         
         # Fechar janela com segurança
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def getPredictions(self):
+        MainWindow.processEvent.set()
 
     def on_serial_change(self, value):
         print(value)
@@ -219,7 +229,7 @@ class MainWindow:
         self.root.quit()
 
     def detectionMain(self):
-        """Atualiza o feed de vídeo com a elipse desenhada."""
+        """Realiza segmentação e processamento."""
         while self.running:
             MainWindow.processEvent.wait()
             # Encerra se a tecla 'q' for pressionada
@@ -259,8 +269,10 @@ class MainWindow:
             self.serial.setPoints(self.colonies)
 
             elapsedTime = time.time() - startTime
-            if elapsedTime < 1/30:
-                time.sleep(1/30 - elapsedTime)
+            print(f"Ellapsed processing time: {elapsedTime}.")
+
+            # Limpa evento somente quando processamento foi concluído
+            MainWindow.processEvent.clear()
     
     def on_close(self):
         """Encerra o programa com segurança."""
