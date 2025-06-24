@@ -15,6 +15,7 @@ from typing import List, Deque
 from detection.traditional.watershed import WaterShed
 
 from detection.deep.yolov6 import ONNXModel
+from detection.traditional.cv import CVDetector
 
 from utils.frame.drawings import getBboxes, drawBoxes
 from utils.entities import PetriDish, Colony
@@ -46,6 +47,8 @@ class MainWindow:
             model_path="./models/bacteria-filtered-smallbox.onnx", 
             custom_export=True,
         )
+
+        # self.detector = CVDetector()
         
         # Variáveis para os parâmetros da elipse
         # self.petriEllipse = EllipseController(self.resolution, root=self.root)
@@ -281,6 +284,7 @@ class MainWindow:
                 continue
             
             nms_thr = self.yoloController.threshold.get()
+            # nms_thr = 0
             output = self.detector.inference(self.detectionFrame, nms_thr)
             
             self.petri.setDishDiameter(self.petriController.diameter)
