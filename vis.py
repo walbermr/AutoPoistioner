@@ -176,10 +176,10 @@ class MainWindow:
         self.newArea.updateValid()
 
         # expand rectangle as you drag the mouse
-        self.canvas.coords(self.removedRect, self.newArea.x, self.newArea.y, self.newArea.xx, self.newArea.yy)
+        self.canvas.coords(self.removedRect, *self.newArea.get_normal_form())
 
     def on_left_button_release(self, event):
-        self.removedAreas.append(self.newArea)
+        self.removedAreas.append(Rectangle(*self.newArea.get_normal_xyhw()))
         self.newArea = Rectangle(0,0,0,0)
     
     def getDebugVariables(self):

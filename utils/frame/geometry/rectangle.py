@@ -31,11 +31,11 @@ class Rectangle():
 
     def update_xx(self, xx):
         self.xx = xx
-        self.w = self.xx - self.x
+        self.w = abs(self.xx - self.x)
 
     def update_yy(self, yy):
         self.yy = yy
-        self.h = self.yy - self.y
+        self.h = abs(self.yy - self.y)
 
     def isValid(self):
         return self.valid
@@ -56,3 +56,17 @@ class Rectangle():
     
     def __str__(self):
         return "Rectangle (%d, %d), (%d, %d)" %(self.x, self.y, self.xx, self.yy)
+    
+    def get_normal_form(self):
+        x = min(self.x, self.xx)
+        y = min(self.y, self.yy)
+        xx = x + self.w
+        yy = y + self.h
+
+        return x, y, xx, yy
+    
+    def get_normal_xyhw(self):
+        x = min(self.x, self.xx)
+        y = min(self.y, self.yy)
+
+        return x, y, self.w, self.h
