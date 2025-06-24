@@ -3,7 +3,9 @@ import time
 import copy
 import numpy as np
 import tkinter as tk
+import os
 
+from pathlib import Path
 from collections import OrderedDict, deque
 from argparse import Namespace
 from PIL import Image, ImageTk
@@ -21,6 +23,7 @@ from utils.frame.geometry import Rectangle, Point
 from utils.frame import center_crop
 from utils.camera import list_ports
 from utils.serial import SerialWrapper
+from utils.saving import get_timehash, save_xy_center, save_image
 
 import threading
 
@@ -115,6 +118,15 @@ class MainWindow:
         # Fechar janela com segurança
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
+        # Savings
+        self.predictionsPath = os.path.join(Path.home(), ".CameraPositioner", "predictions")
+        self.correctionsPath = os.path.join(Path.home(), ".CameraPositioner", "corrections")
+        self.imagesPath = os.path.join(Path.home(), ".CameraPositioner", "images")
+        
+        os.makedirs(self.predictionsPath, exist_ok=True)
+        os.makedirs(self.correctionsPath, exist_ok=True)
+        os.makedirs(self.imagesPath, exist_ok=True)
+
     def getPredictions(self):
         MainWindow.processEvent.set()
 
@@ -191,6 +203,30 @@ class MainWindow:
         data = cv2.cvtColor(data, cv2.COLOR_BGR2RGB)
         image = Image.fromarray(data)
         return ImageTk.PhotoImage(image=image)
+
+    #class x_center y_center width height
+    def save_correction(self, corrections, predictions, frame):
+        timedateHash = get_timehash()
+        predictionsFilename = os.path.join(self.predictionsPath, timedateHash + ".json")
+        correctionsFilename = os.path.join(self.correctionsPath, timedateHash + ".json")
+        imageFilename = os.path.join(self.imagesPath, timedateHash + ".png")
+
+        save_xy_center(predictions, predictionsFilename)
+        save_xy_center(corrections, correctionsFilename)
+        save_image(frame, imageFilename)
+
+    def controllerMain(self):
+        while self.running:
+            if MainWindow.closeEvent.isSet() or not self.running:
+                return
+            
+            self.serial.updateFinishedEvent.wait()
+            
+            corrs = copy.deepcopy(self.serial.correction_buffer)
+            preds = copy.deepcopy(self.serial.data_buffer)
+            frame = copy.deepcopy(self.detectionFrame)
+
+            self.save_correction(preds, corrs, frame)
     
     def videoMain(self):
         while self.running:
@@ -238,17 +274,17 @@ class MainWindow:
 
             startTime = time.time()
             with MainWindow.frameLock:
-                frame = np.mean(self.frameBuffer, axis=0).astype(np.uint8)
+                self.detectionFrame = np.mean(self.frameBuffer, axis=0).astype(np.uint8)
             
-            if len(frame.shape) == 0:
+            if len(self.detectionFrame.shape) == 0:
                 time.sleep(0.001)
                 continue
             
             nms_thr = self.yoloController.threshold.get()
-            output = self.detector.inference(frame, nms_thr)
+            output = self.detector.inference(self.detectionFrame, nms_thr)
             
             self.petri.setDishDiameter(self.petriController.diameter)
-            _ = self.petri.segmentDish(frame)
+            _ = self.petri.segmentDish(self.detectionFrame)
             self.petri.findParameters()
 
             _, self.bboxes = getBboxes(
