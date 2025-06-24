@@ -15,12 +15,14 @@ class CVDetector:
         contours, hier = cv2.findContours(opening, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
         valid = []
+        i = 0
 
         # draw a bounding box around each contour
         for contour in contours:
             x, y, w, h = cv2.boundingRect(contour)
             area = w * h
             if 0 < area < 200:
-                valid.append((x, y, x+w, y+h, 1.0))
+                valid.append((x, y, x+w, y+h, 1.0, i))
+                i += 1
 
-        return [(*v, i) for i, v in enumerate(valid)]
+        return valid
