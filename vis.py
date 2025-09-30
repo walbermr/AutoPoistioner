@@ -43,12 +43,12 @@ class MainWindow:
         self.running = True
         self.root.title("Bacteria Detection")
         self.resolution: Namespace = Namespace(x=640, y=640)
-        self.detector: ONNXModel = ONNXModel(
-            model_path="./models/bacteria-filtered-smallbox.onnx", 
-            custom_export=True,
-        )
+        # self.detector: ONNXModel = ONNXModel(
+        #     model_path="./models/bacteria-filtered-smallbox.onnx", 
+        #     custom_export=True,
+        # )
 
-        # self.detector = CVDetector()
+        self.detector = CVDetector()
         
         # Variáveis para os parâmetros da elipse
         # self.petriEllipse = EllipseController(self.resolution, root=self.root)
@@ -244,16 +244,17 @@ class MainWindow:
                     self.frameBuffer.popleft()
                     self.frameBuffer.append(frame)
 
+            frameVis = copy.deepcopy(frame)
             if self.newArea.isValid():
-                cv2.rectangle(frame, (self.newArea.x, self.newArea.y), (self.newArea.xx, self.newArea.yy), (0, 0, 0), -1)
+                cv2.rectangle(frameVis, (self.newArea.x, self.newArea.y), (self.newArea.xx, self.newArea.yy), (0, 0, 0), -1)
  
             for area in self.removedAreas:
-                cv2.rectangle(frame, (area.x, area.y), (area.xx, area.yy), (0, 0, 0), -1)
+                cv2.rectangle(frameVis, (area.x, area.y), (area.xx, area.yy), (0, 0, 0), -1)
 
-            drawBoxes(self.bboxes, frame)
+            drawBoxes(self.bboxes, frameVis)
 
             # Exibe o vídeo em uma janela do OpenCV
-            imageFrame = self._arrayToImage(frame)
+            imageFrame = self._arrayToImage(frameVis)
             self.canvas.create_image(0, 0, image=imageFrame, anchor="nw")
             self.canvas.image = imageFrame
 
@@ -261,7 +262,7 @@ class MainWindow:
             if elapsedTime < 1/60:
                 time.sleep(1/60 - elapsedTime)
 
-            if MainWindow.closeEvent.isSet() or not self.running:
+            if MainWindow.closeEvent.is_set() or not self.running:
                 MainWindow.processEvent.set()
                 break
 
@@ -272,7 +273,7 @@ class MainWindow:
         while self.running:
             MainWindow.processEvent.wait()
             # Encerra se a tecla 'q' for pressionada
-            if MainWindow.closeEvent.isSet() or not self.running:
+            if MainWindow.closeEvent.is_set() or not self.running:
                 return
 
             startTime = time.time()
