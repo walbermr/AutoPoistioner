@@ -13,10 +13,10 @@ def getBboxes(outputs, frame_resolution, score_thr, removable_area:List[Rectangl
             if len(box) == 0: continue
 
             box = [
-                max(box[0], frame_resolution[1]),
-                max(box[1], frame_resolution[0]),
-                max(box[2], frame_resolution[1]),
-                max(box[3], frame_resolution[0]),
+                min(box[0], frame_resolution[1]),
+                min(box[1], frame_resolution[0]),
+                min(box[2], frame_resolution[1]),
+                min(box[3], frame_resolution[0]),
                 box[4],
                 box[5],
             ]   # transform from tupleto lix, avoiding modifying the underlying data
