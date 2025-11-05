@@ -52,12 +52,12 @@ class SerialWrapper:
                 s = serial.Serial(port)
                 s.close()
                 result.append(port)
-            except (OSError, serial.SerialException):
-                pass
+            except (OSError, serial.SerialException) as e:
+                print(e)
         return result
     
     def get_serial_message(self, colonies: List[Colony]):
-        return ["X%.4f,Y%.4f"%(i.getOffset().x, i.getOffset().y) for i in colonies]
+        return ["(%.4f,%.4f)"%(i.getOffset().x, i.getOffset().y) for i in colonies]
     
     def on_close(self):
         self.closeEvent.set()
@@ -71,7 +71,7 @@ class SerialWrapper:
     def sendData(self, data):
         if self.ser is not None and data is not None:
             data = "PT" + data + "\n"
-            print("Data sent:", data, end='')
+            print("Data sent:", data)
             try:
                 self.ser.write(data.encode())
             except serial.serialutil.SerialTimeoutException:
