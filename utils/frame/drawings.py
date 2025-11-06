@@ -2,6 +2,15 @@ from typing import List, Tuple
 
 from .geometry.rectangle import Rectangle
 from .geometry.boundingbox import BoundingBox
+from .geometry.circle import Circle
+
+
+class Color:
+    RED = (4,0,255)
+    GREEN = (40,255,0)
+    BLUE = (255,0,85)
+    YELLOW = (0,255,236)
+    CYAN = (255,192,0)
 
 
 def getBboxes(outputs, frame_resolution, score_thr, removable_area:List[Rectangle]):
@@ -10,6 +19,7 @@ def getBboxes(outputs, frame_resolution, score_thr, removable_area:List[Rectangl
 
     for output in outputs:
         for box in output:
+            print(box)
             if len(box) == 0: continue
 
             box = [
@@ -37,9 +47,11 @@ def getBboxes(outputs, frame_resolution, score_thr, removable_area:List[Rectangl
     if len(boxes) == 0:
         print("No detections.")
 
+    print(boxes, rects)
+
     return rects, boxes
 
 
-def drawBoxes(boxes:List[Rectangle], frame):
+def drawBoxes(boxes:List[BoundingBox], frame):
     for bbox in boxes:
-        bbox.print_bbox(frame)
+        bbox.draw(frame, color=Color.GREEN)
