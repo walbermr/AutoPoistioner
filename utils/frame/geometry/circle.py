@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 
 from .point import Point
@@ -18,3 +19,6 @@ class Circle():
     @property
     def center(self):
         return self._center
+    
+    def draw(self, frame, color=(0, 255, 0), thickness=1):
+        return cv2.circle(frame, tuple(self._center), self.r, color, thickness)
