@@ -1,9 +1,11 @@
-
 import cv2
 
 import numpy as np
 
+from collections import deque
+
 from utils.frame.geometry import Circle, Rectangle, Point
+from utils.frame.drawings import Color
 
 
 class ConversionFactor:
@@ -35,6 +37,8 @@ class PetriDish():
         self._diameter: float = diameter
         self._conversionFactor: float = ConversionFactor()
 
+        self.center: Circle = None
+
     def getCentroid(self) -> Point:
         return self._pixelCentroid
 
@@ -46,6 +50,19 @@ class PetriDish():
             (255,0,0), 
             10,
         )
+        return frame
+    
+    def drawMask(self, frame, color=Color.CYAN, alpha=0.2):
+        colored_mask = np.zeros_like(frame)
+        
+        colored_mask[self._segmentation == 1, 0] = color[0]
+        colored_mask[self._segmentation == 1, 1] = color[1]
+        colored_mask[self._segmentation == 1, 2] = color[2]
+
+        frame = cv2.addWeighted(frame, 1.0-alpha, colored_mask, alpha, 0)
+
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+
         return frame
     
     def getConversionFactor(self) -> ConversionFactor:
@@ -61,7 +78,7 @@ class PetriDish():
         realArea = np.pi * (self._diameter / 2.0) ** 2
         self._conversionFactor.update(realArea / self._pixelArea)
 
-    def findParameters(self) -> None:
+    def findCentroid(self):
         imageMoments = cv2.moments(self._segmentation)
 
         # Compute centroid
@@ -69,12 +86,46 @@ class PetriDish():
         cy = int(imageMoments["m01"]/imageMoments["m00"])
 
         self._pixelCentroid = Point(cx, cy)
+        self.center = Circle(cx, cy, 2)
 
+    def findParameters(self, estimate) -> None:
         # Calculate radius
+        self._segmentation = self._clearSegmentation(
+            estimate, self._segmentation,
+        )
+
+        self.findCentroid()
+
         self._pixelArea = self._segmentation.sum()
         self._pixelRadius = np.sqrt(self._pixelArea / np.pi)
 
         self._updateConversionFactor()
+
+    def _clearSegmentation(self, centroid, seg):
+        newMat = np.zeros_like(seg)
+        N, M = len(seg), len(seg[0])
+        directions = [(-1,0), (0,-1), (1,0), (0,1)]
+        queue = deque([centroid])
+        seen = set([centroid])
+
+        valid = lambda a, b: 0 <= a < N and 0 <= b < M and seg[a][b]
+
+        while queue:
+            x, y = queue.popleft()
+            
+            newMat[x][y] = 1
+
+            for d in directions:
+                xx, yy = x + d[0], y + d[1]
+
+                if (xx, yy) in seen: continue
+
+                if valid(xx, yy):
+                    queue.append((xx, yy))
+
+                seen.add((xx, yy))
+
+        return newMat
     
     def segmentDish(self, image) -> np.ndarray:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -90,6 +141,9 @@ class PetriDish():
         self._segmentation = (opening != 0).astype(float)
 
         return dishSegmentationMask
+    
+    def isSegmented(self):
+        return self.center is not None
 
 
 class Colony():
