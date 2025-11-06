@@ -17,10 +17,10 @@ from detection.traditional.watershed import WaterShed
 from detection.deep.yolov6 import ONNXModel
 from detection.traditional.cv import CVDetector
 
-from utils.frame.drawings import getBboxes, drawBoxes
+from utils.frame.drawings import getBboxes, drawBoxes, Color
 from utils.entities import PetriDish, Colony
 from utils.controllers import PetriDishController, FrameController, YoloController, SerialController
-from utils.frame.geometry import Rectangle, Point
+from utils.frame.geometry import Rectangle, Point, Circle
 from utils.frame import center_crop
 from utils.camera import list_ports
 from utils.serial import SerialWrapper
@@ -29,6 +29,7 @@ from utils.saving import get_timehash, save_xy_center, save_image
 import threading
 
 DEBUG = True
+INPUT_IMAGE = '/home/walber/Pictures/Camera/img1.jpeg'
 
 
 class MainWindow:
@@ -43,6 +44,7 @@ class MainWindow:
         self.running = True
         self.root.title("Bacteria Detection")
         self.resolution: Namespace = Namespace(x=640, y=640)
+        self._imageCenter = Circle(self.resolution.x // 2, self.resolution.y // 2, 1)
         # self.detector: ONNXModel = ONNXModel(
         #     model_path="./models/bacteria-filtered-smallbox.onnx", 
         #     custom_export=True,
@@ -230,12 +232,18 @@ class MainWindow:
             frame = copy.deepcopy(self.detectionFrame)
 
             self.save_correction(preds, corrs, frame)
-    
+
+    #TODO: implement while running as decorator to remove possibility of editing frame
     def videoMain(self):
         while self.running:
             startTime = time.time()
-            ret, frame = self.cap.read()
+            if DEBUG:
+                frame = cv2.imread(INPUT_IMAGE)
+            else:
+                ret, frame = self.cap.read()
+
             frame = center_crop(frame, (self.resolution.x, self.resolution.y))
+            frameVis = copy.deepcopy(frame)
             
             with MainWindow.frameLock:
                 if len(self.frameBuffer) == 0:
@@ -244,7 +252,10 @@ class MainWindow:
                     self.frameBuffer.popleft()
                     self.frameBuffer.append(frame)
 
-            frameVis = copy.deepcopy(frame)
+            if self.petri.isSegmented():
+                frameVis = self.petri.drawMask(frameVis)
+                self.petri.center.draw(frameVis, color=Color.RED, thickness=5)
+
             if self.newArea.isValid():
                 cv2.rectangle(frameVis, (self.newArea.x, self.newArea.y), (self.newArea.xx, self.newArea.yy), (0, 0, 0), -1)
  
@@ -252,6 +263,7 @@ class MainWindow:
                 cv2.rectangle(frameVis, (area.x, area.y), (area.xx, area.yy), (0, 0, 0), -1)
 
             drawBoxes(self.bboxes, frameVis)
+            self._imageCenter.draw(frameVis, Color.BLUE, 5)
 
             # Exibe o vídeo em uma janela do OpenCV
             imageFrame = self._arrayToImage(frameVis)
@@ -280,17 +292,13 @@ class MainWindow:
             with MainWindow.frameLock:
                 self.detectionFrame = np.mean(self.frameBuffer, axis=0).astype(np.uint8)
             
-            if len(self.detectionFrame.shape) == 0:
-                time.sleep(0.001)
-                continue
-            
             nms_thr = self.yoloController.threshold.get()
             # nms_thr = 0
             output = self.detector.inference(self.detectionFrame, nms_thr)
             
             self.petri.setDishDiameter(self.petriController.diameter)
             _ = self.petri.segmentDish(self.detectionFrame)
-            self.petri.findParameters()
+            self.petri.findParameters(tuple(self._imageCenter.center))
 
             _, self.bboxes = getBboxes(
                 output, 
