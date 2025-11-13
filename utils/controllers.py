@@ -86,8 +86,8 @@ class EllipseController(Controls):
 
 class PetriDishController(Controls):
     def __init__(self, root=None):
-        self._diameter = tk.IntVar(value=100)
-        self._valueList = [50 + 10*i for i in range(11)]
+        self._diameter = tk.IntVar(value=88)
+        self._valueList = [50 + i for i in range(110)]
 
         super().__init__(root)
 
