@@ -11,16 +11,14 @@ from utils.frame.drawings import Color
 class ConversionFactor:
     def __init__(self, value=0):
         self._factor = 0
-        self._linear_factor = 0
         self.update(value)
 
     def update(self, value: float):
         self._factor = value
-        self._linear_factor = np.sqrt(self._factor / np.pi)
 
     @property
     def linear(self) -> float:
-        return self._linear_factor
+        return self._factor
 
     def __mul__(self, num) -> float:
         return self._factor * num
@@ -75,10 +73,9 @@ class PetriDish():
         if self._diameter == 0:
             return
         
-        realArea = np.pi * (self._diameter / 2.0) ** 2
-        self._conversionFactor.update(realArea / self._pixelArea)
+        self._conversionFactor.update(self._diameter / (2 * self._pixelRadius))
 
-    def findCentroid(self):
+    def findCentroid(self) -> None:
         imageMoments = cv2.moments(self._segmentation)
 
         # Compute centroid
@@ -155,14 +152,17 @@ class Colony():
         self._limits = Circle(
             self._detection.cx, 
             self._detection.cy, 
-            (self._detection.h + self._detection.w) / 2,
+            np.sqrt(self._detection.h**2 + self._detection.w**2),
         )
 
     def getPixelOffset(self) -> Point:
         return self._limits.center
 
     def getOffset(self) -> Point:
-        return (self._limits.center - self._coordinateZero) * self._conversionFactor.linear
+        xReal = self._conversionFactor * (self._limits.center.x - self._coordinateZero.x)
+        yReal = self._conversionFactor * (self._limits.center.y - self._coordinateZero.y)
+        
+        return Point(xReal, -yReal)
 
     def getConversionFactor(self) -> ConversionFactor:
         return self._conversionFactor
