@@ -1,5 +1,5 @@
 # Pull base image.
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
 # Install.
 RUN \
@@ -37,13 +37,16 @@ RUN conda --version
 
 COPY ./env.yaml /root/env.yaml
 
+RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main \
+ && conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+
 RUN conda env create -f /root/env.yaml
 
 RUN apt-get update && apt-get install ffmpeg libsm6 libxext6  -y
 
 RUN echo "source activate bio-gen-lean" > ~/.bashrc
 
-ENV PATH="/opt/conda/envs/bio-gen-lean/bin:${PATH}"
+ENV PATH /opt/conda/envs/bio-gen-lean/bin:$PATH
+ENV CONDA_DEFAULT_ENV bio-gen-lean
 
-# Define default command.
 CMD ["bash"]
