@@ -29,7 +29,7 @@ from utils.saving import get_timehash, save_xy_center, save_image
 import threading
 
 DEBUG = False
-INPUT_IMAGE = '/home/walber/Pictures/Camera/img1.jpeg'
+INPUT_IMAGE = './images/img1.jpeg'
 
 
 class MainWindow:
@@ -245,7 +245,7 @@ class MainWindow:
             frame = center_crop(frame, (self.resolution.x, self.resolution.y))
             # frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
             # frame = cv2.flip(frame, 1)
-            # frame = cv2.flip(frame, 0)
+            frame = cv2.flip(frame, 0)
             frameVis = copy.deepcopy(frame)
             
             with MainWindow.frameLock:
@@ -309,6 +309,10 @@ class MainWindow:
                 nms_thr, 
                 self.removedAreas,
             )
+
+            self.bboxes = [
+                box for box in self.bboxes if self.petri._segmentation[box.center.y][box.center.x]
+            ]
             
             self.colonies = [
                 Colony(
@@ -320,7 +324,7 @@ class MainWindow:
             ]
 
             for c in self.colonies:
-                print(c._detection.idx, c.getOffset().x, c.getOffset().y)
+                print(c._detection.idx, c.getOffset(), c._limits.center)
                 
             self.serial.setPoints(self.colonies)
 
