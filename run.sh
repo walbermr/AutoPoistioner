@@ -1,3 +1,2 @@
 #!/bin/bash
-conda activate bio-gen-lean
-pyinstaller vis.py
+pyinstaller vis.py --hidden-import='PIL._tkinter_finder'
