@@ -28,7 +28,7 @@ from utils.saving import get_timehash, save_xy_center, save_image
 
 import threading
 
-DEBUG = True
+DEBUG = False
 INPUT_IMAGE = '/home/walber/Pictures/Camera/img1.jpeg'
 
 
@@ -243,6 +243,9 @@ class MainWindow:
                 ret, frame = self.cap.read()
 
             frame = center_crop(frame, (self.resolution.x, self.resolution.y))
+            # frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            # frame = cv2.flip(frame, 1)
+            # frame = cv2.flip(frame, 0)
             frameVis = copy.deepcopy(frame)
             
             with MainWindow.frameLock:
@@ -315,6 +318,10 @@ class MainWindow:
                 ) 
                 for r in self.bboxes
             ]
+
+            for c in self.colonies:
+                print(c._detection.idx, c.getOffset().x, c.getOffset().y)
+                
             self.serial.setPoints(self.colonies)
 
             elapsedTime = time.time() - startTime

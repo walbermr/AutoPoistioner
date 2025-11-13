@@ -34,7 +34,7 @@ def getBboxes(outputs, frame_resolution, score_thr, removable_area:List[Rectangl
             x1, y1, x2, y2, score, index = box
             if score > score_thr:
                 x, y, h, w = int(x1), int(y1), int(abs(x1-x2)), int(abs(y1-y2))
-                bbox = BoundingBox(x, y, h, w)
+                bbox = BoundingBox(x, y, h, w, index)
                 remove_box = False
                 if len(removable_area) > 0:
                     for area in removable_area:

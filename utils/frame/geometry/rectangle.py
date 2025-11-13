@@ -1,13 +1,14 @@
 from .point import Point
 
 class Rectangle():
-    def __init__(self, x, y, w, h):
+    def __init__(self, x, y, w, h, idx=None):
         self.x = x
         self.y = y
         self.w = w
         self.h = h
         self.xx = x + w
         self.yy = y + h
+        self.idx = idx
 
         hw, hh = w//2, h//2
         cx, cy = x+hw, y+hh
