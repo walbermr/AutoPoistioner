@@ -162,7 +162,7 @@ class Colony():
         xReal = self._conversionFactor * (self._limits.center.x - self._coordinateZero.x)
         yReal = self._conversionFactor * (self._limits.center.y - self._coordinateZero.y)
         
-        return Point(xReal, -yReal)
+        return Point(xReal, yReal)
 
     def getConversionFactor(self) -> ConversionFactor:
         return self._conversionFactor

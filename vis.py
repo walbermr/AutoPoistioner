@@ -243,9 +243,6 @@ class MainWindow:
                 ret, frame = self.cap.read()
 
             frame = center_crop(frame, (self.resolution.x, self.resolution.y))
-            # frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
-            # frame = cv2.flip(frame, 1)
-            frame = cv2.flip(frame, 0)
             frameVis = copy.deepcopy(frame)
             
             with MainWindow.frameLock:
